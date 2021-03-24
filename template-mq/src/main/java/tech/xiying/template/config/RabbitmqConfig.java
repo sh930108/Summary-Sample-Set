@@ -3,13 +3,12 @@ package tech.xiying.template.config;
 import com.google.common.collect.Maps;
 import com.rabbitmq.client.ConnectionFactory;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.Exchange;
-import org.springframework.amqp.core.FanoutExchange;
-import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.SimplePropertyValueConnectionNameStrategy;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -68,8 +67,13 @@ public class RabbitmqConfig {
     }
 
     @Bean
-    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory){
-        RabbitAdmin rabbitAdmin = new RabbitAdmin(rabbitmqCachingConnectionFactory(connectionFactory));
+    public Exchange helloExchange(){
+        return new FanoutExchange(MqEnum.ExchangeTypeEnum.FANOUT.getDesc(),true,false);
+    }
+
+    @Bean
+    public RabbitAdmin rabbitAdmin(CachingConnectionFactory rabbitmqCachingConnectionFactory){
+        RabbitAdmin rabbitAdmin = new RabbitAdmin(rabbitmqCachingConnectionFactory);
         // 声明exchange
         Map<String, Object> arguments = Maps.newHashMap();
         // 设置队列超时时间为10秒
@@ -77,7 +81,7 @@ public class RabbitmqConfig {
         // 队列过期时间，队列在多长时间未被访问将被删除，单位：毫秒；
         arguments.put("x-expires", 24*60*60*1000L);
 
-        Exchange exchange = new FanoutExchange(MqEnum.ExchangeTypeEnum.FANOUT.getDesc(),true,false);
+        Exchange exchange = helloExchange();
         rabbitAdmin.declareExchange(exchange);
         // 声明队列
         rabbitAdmin.declareQueue(new Queue("hello",
@@ -90,6 +94,35 @@ public class RabbitmqConfig {
         return rabbitAdmin;
     }
 
+    @Bean
+    public SimpleMessageListenerContainer simpleMessageListenerContainer(CachingConnectionFactory rabbitmqCachingConnectionFactory){
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(rabbitmqCachingConnectionFactory);
+        container.setRetryDeclarationInterval(5000L);
+        container.setMissingQueuesFatal(false);
+        container.setQueueNames("hello");
+        container.setAmqpAdmin(rabbitAdmin(rabbitmqCachingConnectionFactory));
+        MessageListener messageListener = new MessageListener() {
+            @Override
+            public void onMessage(Message message) {
+                System.out.println("======================");
+                System.out.println(new String(message.getBody()));
+                System.out.println("======================");
+            }
+        };
+        container.setMessageListener(messageListener);
+        return container;
+    }
+
+    @Bean
+    public RabbitTemplate helloRabbitTemplate(CachingConnectionFactory rabbitmqCachingConnectionFactory){
+        RabbitAdmin rabbitAdmin = new RabbitAdmin(rabbitmqCachingConnectionFactory);
+        // 声明exchange
+        rabbitAdmin.declareExchange(helloExchange());
+        RabbitTemplate rabbitTemplate = new RabbitTemplate();
+        rabbitTemplate.setConnectionFactory(rabbitmqCachingConnectionFactory);
+        rabbitTemplate.setExchange(helloExchange().getName());
+        return rabbitTemplate;
+    }
 
 
 }
