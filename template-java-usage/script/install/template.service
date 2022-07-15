@@ -1,0 +1,9 @@
+[Unit]
+Description=template service
+[Service]
+SuccessExitStatus=143
+Type=forking
+ExecStart=/etc/start.sh
+
+[Install]
+WantedBy=multi-user.target

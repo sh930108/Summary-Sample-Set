@@ -1,0 +1,193 @@
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+<!-- START SNIPPET: example -->
+<beans
+  xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://activemq.apache.org/schema/core http://activemq.apache.org/schema/core/activemq-core.xsd">
+
+    <!-- Allows us to use system properties as variables in this configuration file -->
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="locations">
+            <value>file:${activemq.conf}/credentials.properties</value>
+        </property>
+    </bean>
+
+   <!-- Allows accessing the server log -->
+    <bean id="logQuery" class="io.fabric8.insight.log.log4j.Log4jLogQuery"
+          lazy-init="false" scope="singleton"
+          init-method="start" destroy-method="stop">
+    </bean>
+			<bean xmlns="http://www.springframework.org/schema/beans"  id="authUser" class="org.apache.activemq.security.AuthenticationUser">
+				<property name="groups" value="users,admins"/>
+				<property name="password" value="admin"/>
+				<property name="username" value="admin"/>
+			</bean>
+    <!--
+        The <broker> element is used to configure the ActiveMQ broker.
+    -->
+    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="broker-3" offlineDurableSubscriberTimeout="60000" offlineDurableSubscriberTaskSchedule="60000" dataDirectory="${activemq.data}" useJmx="true" >
+
+        <destinationPolicy>
+            <policyMap>
+              <policyEntries>
+					<policyEntry cursorMemoryHighWaterMark="50" topic="&gt;">
+                      <!-- The constantPendingMessageLimitStrategy is used to prevent
+                           slow topic consumers to block producers and affect other consumers
+                           by limiting the number of messages that are retained
+                           For more information, see:
+
+                           http://activemq.apache.org/slow-consumer-handling.html
+
+                      -->
+                      <!-- 关闭慢消费者 -->
+                      <!--是否关闭底层的transport，默认false：通过transport向client发送指令，client接受后，调用consumer.close
+                      为true，底层transport链接关闭，如果client多个consumer共享一个connection，导致all的consumer关闭 -->
+                      <slowConsumerStrategy>
+                          <abortSlowConsumerStrategy abortConnection="false"/>
+                      </slowConsumerStrategy>
+                      <pendingMessageLimitStrategy>
+                          <constantPendingMessageLimitStrategy limit="1500"/>
+                      </pendingMessageLimitStrategy>
+                      <deadLetterStrategy>
+                          <!-- update at 2018-09-29 add dlq expiration 1days-->
+                          <sharedDeadLetterStrategy expiration="86400000" processExpired="false"/>
+                      </deadLetterStrategy>
+                  </policyEntry>
+
+				  <policyEntry queue=">" gcInactiveDestinations="true" memoryLimit="16mb" inactiveTimoutBeforeGC="30000">
+					<deadLetterStrategy>
+						<sharedDeadLetterStrategy processExpired="true"  expiration="30000"/>
+					</deadLetterStrategy>
+				  </policyEntry>
+              </policyEntries>
+            </policyMap>
+        </destinationPolicy>
+
+		<destinationInterceptors>
+			<virtualDestinationInterceptor>
+				<virtualDestinations>
+					<virtualTopic name="shanghao.*" prefix="VirtualTopicConsumers.*." selectorAware="false"/>
+				</virtualDestinations>
+			</virtualDestinationInterceptor>
+		</destinationInterceptors>
+
+        <!--
+            The managementContext is used to configure how ActiveMQ is exposed in
+            JMX. By default, ActiveMQ uses the MBean server that is started by
+            the JVM. For more information, see:
+
+            http://activemq.apache.org/jmx.html
+        -->
+        <managementContext>
+            <managementContext createConnector="false"/>
+        </managementContext>
+		<!--<sslContext> 
+            
+			              <sslContext keyStore="e:\2018Q4\MQ\activemq514win64_foundation\conf\broker.ks" 
+              keyStorePassword="password"/> 
+        </sslContext>   -->
+        <!--
+            Configure message persistence for the broker. The default persistence
+            mechanism is the KahaDB store (identified by the kahaDB tag).
+            For more information, see:
+
+            http://activemq.apache.org/persistence.html
+        -->
+        <persistenceAdapter>
+            <kahaDB directory="${activemq.data}/kahadb"/>
+			<!--<kahaDB directory="f:\MQ\MQ相关资料\问题排查\20190115-10.66.165.16-amq告警-陈姗姗6\amq组件\data\/kahadb"/>-->
+        </persistenceAdapter>
+
+
+          <!--
+            The systemUsage controls the maximum amount of space the broker will
+            use before disabling caching and/or slowing down producers. For more information, see:
+            http://activemq.apache.org/producer-flow-control.html
+          -->
+          <systemUsage>
+            <systemUsage>
+                <memoryUsage>
+                    <memoryUsage percentOfJvmHeap="70" />
+                </memoryUsage>
+                <storeUsage>
+                    <storeUsage limit="100 gb"/>
+                </storeUsage>
+                <tempUsage>
+                    <tempUsage limit="50 gb"/>
+                </tempUsage>
+            </systemUsage>
+        </systemUsage>
+
+		
+		
+		
+        <!--
+            The transport connectors expose ActiveMQ over a given protocol to
+            clients and other brokers. For more information, see:
+
+            http://activemq.apache.org/configuring-transports.html
+        -->
+        <transportConnectors>
+            <!-- DOS protection, limit concurrent connections to 1000 and frame size to 100MB -->
+            <transportConnector  name="auto+nio" rebalanceClusterClients="true" updateClusterClients="true" updateClusterClientsOnRemove="true" uri="auto+nio://0.0.0.0:27020?maximumConnections=1000&amp;amp;wireFormat.maxFrameSize=104857600"/>
+<!--             <transportConnector name="amqp" uri="amqp://10.14.69.107:5672?maximumConnections=1000&amp;amp;wireFormat.maxFrameSize=104857600"/>   
+            <transportConnector name="stomp" uri="stomp://10.14.69.107:61613?maximumConnections=1000&amp;amp;wireFormat.maxFrameSize=104857600"/>  
+            <transportConnector name="mqtt" uri="mqtt://10.14.69.107:1883?maximumConnections=1000&amp;amp;wireFormat.maxFrameSize=104857600"/>  
+            <transportConnector name="ws" uri="ws://10.14.69.107:61614?maximumConnections=1000&amp;amp;wireFormat.maxFrameSize=104857600"/>   -->
+           <!-- <transportConnector name="auto+nio+ssl" rebalanceClusterClients="true" updateClusterClients="true" updateClusterClientsOnRemove="true" uri="auto+nio+ssl://0.0.0.0:28356?transport.enabledProtocols=TLSv1.2&amp;transport.enabledCipherSuites=TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,TLS_ECDHE_RSA_WITH_RC4_128_SHA,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_256_CBC_SHA256,TLS_RSA_WITH_AES_256_CBC_SHA,SSL_RSA_WITH_RC4_128_SHA"/>-->
+        </transportConnectors>
+
+		<networkConnectors>
+			<networkConnector name="linkToBroker2" networkTTL="-1" uri="static:(tcp://10.19.128.109:27019)"/>  
+			<networkConnector name="linkToBroker1" networkTTL="-1" uri="static:(tcp://10.19.128.109:27018)"/>  
+			<networkConnector name="linkToBroker4" networkTTL="-1" uri="static:(tcp://10.19.128.109:27021)"/>  
+        </networkConnectors>
+		<!--
+		<networkConnectors>  
+		  <networkConnector name="shanghao1" duplex="false" networkTTL="2" uri="static:(tcp://127.0.0.1:8678,auto+nio://127.0.0.1:7002)"/>  
+		</networkConnectors>   -->
+		
+        <!-- destroy the spring context on shutdown to stop jetty -->
+        <shutdownHooks>
+            <bean xmlns="http://www.springframework.org/schema/beans" class="org.apache.activemq.hooks.SpringContextHook" />
+        </shutdownHooks>
+		<plugins>
+				<!--<bean xmlns="http://www.springframework.org/schema/beans" id="jhPlugin" class="com.mqTokenAuthPlugin.AuthPlugin">
+				<property name="users">
+					<list value-type="org.apache.activemq.security.AuthenticationUser">
+						 <ref bean="authUser"/>
+					</list>
+				</property>
+			</bean>-->
+			<!-- ttlCeiling ： When not zero, this value (in ms) limit the expiration time.表示过期时间上限（程序写的过期时间不能超过此时间，超过则以此时间为准）
+			zeroExpirationOverride： When not zero this value (in ms) will override the expiration time for messages that do not have an expiration already set.表示过期时间（给未分配过期时间的消息分配过期时间） -->
+			<timeStampingBrokerPlugin ttlCeiling="30000000" zeroExpirationOverride="30000000" />
+        </plugins>
+    </broker>
+
+    <!--
+        Enable web consoles, REST and Ajax APIs and demos
+        The web consoles requires by default login, you can disable this in the jetty.xml file
+
+        Take a look at ${ACTIVEMQ_HOME}/conf/jetty.xml for more details
+    -->
+    <import resource="jetty.xml"/>
+
+</beans>
+<!-- END SNIPPET: example -->
